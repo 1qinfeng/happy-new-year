@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <!-- 引入 MQTT.js 库，用于实时通信 -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     
     <style>
         /* --- 全局与背景 --- */
@@ -388,23 +390,53 @@
         <div class="text-sm text-yellow-500/40 mt-2">点击飘落的红包收获好运</div>
     </div>
 
-    <!-- Firebase SDK 配置 -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <!-- 逻辑脚本 -->
+    <script>
+        // --- 1. MQTT 实时通信 (核心) ---
+        // 使用公共 Broker，自动连接到 WebSocket 端口 (wss)
+        const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'cny_2026_' + Math.random().toString(16).substr(2, 8)
+        });
+        const mqttTopic = 'hny2026/wishes/live';
+
+        // 监听连接
+        mqttClient.on('connect', () => {
+            console.log('MQTT Connected (CN optimized)');
+            // 订阅频道
+            mqttClient.subscribe(mqttTopic, (err) => {
+                if (!err) {
+                    // 连接成功，自动发一条“上线”隐形消息（可选）
+                }
+            });
+        });
+
+        // 监听消息
+        mqttClient.on('message', (topic, message) => {
+            try {
+                // 解析消息
+                const msgData = JSON.parse(message.toString());
+                const text = msgData.text;
+                const senderId = msgData.id;
+                
+                // 如果是别人发的消息，显示为弹幕
+                // (自己发的已经在 sendWish 里立即显示了，这里过滤掉以防重复)
+                if (senderId !== mqttClient.options.clientId) {
+                    danmakus.push(new Danmaku(text, false)); // false 表示普通颜色
+                    // 别人发消息时，放个小烟花庆祝
+                    createFirework(Math.random() * window.innerWidth, window.innerHeight * 0.4);
+                }
+            } catch (e) {
+                console.log('收到非JSON消息:', message.toString());
+            }
+        });
 
         // --- 全局变量定义 ---
         const targetDate = new Date('February 17, 2026 00:00:00').getTime();
-        // **注意**：在前端代码中硬编码 API Key 是不安全的。在生产环境中，请通过后端代理调用。
         const deepseekApiKey = "sk-ae653d972e284b29a68739f1f53aa2a5"; 
 
         // --- DeepSeek API 调用 ---
         window.generateWish = async function(category) {
             const input = document.getElementById('wish-input');
-            const originalPlaceholder = input.placeholder;
-            
-            // UI 反馈：设置加载状态
             input.value = "DeepSeek 正在创作...";
             input.disabled = true;
             
@@ -431,21 +463,12 @@
                     })
                 });
 
-                if (!response.ok) {
-                    const errData = await response.json().catch(() => ({}));
-                    throw new Error(errData.error?.message || 'DeepSeek API 请求失败');
-                }
-
+                if (!response.ok) throw new Error('API Request Failed');
                 const data = await response.json();
                 const aiText = data.choices?.[0]?.message?.content?.trim() || "马年大吉大利！";
-                
-                // 清除引用号等可能的杂质
-                const cleanText = aiText.replace(/['"《》]/g, '');
-                
-                input.value = cleanText;
+                input.value = aiText.replace(/['"《》]/g, '');
             } catch (error) {
-                console.error("DeepSeek API Error:", error);
-                // Fallback: 如果 API 失败，使用本地随机库
+                console.error("AI Error:", error);
                 const fallbacks = ["马到成功", "龙马精神", "一马当先", "万马奔腾"];
                 input.value = fallbacks[Math.floor(Math.random() * fallbacks.length)];
                 showFloatingText(window.innerWidth/2, window.innerHeight/2, "AI 休息中，已随机生成");
@@ -455,96 +478,52 @@
             }
         };
 
-        // --- Firebase 配置 ---
-        const firebaseUserConfig = {
-            apiKey: "AIzaSyB7RuwDHdXsn4szGRvz02bOAGTdvmCr7jY",
-            authDomain:"my-lunar-new-year.firebaseapp.com",
-            projectId: "my-lunar-new-year",
-            storageBucket: "my-lunar-new-year.firebasestorage.app",
-            messagingSenderId: "683264389365",
-            appId: "1:683264389365:web:0d436de2928c8833dd55bc",
-            measurementId: "G-G1GQRW9K9R"
-        };
-
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
-            ? JSON.parse(__firebase_config) 
-            : firebaseUserConfig;
+        // --- 模拟多人互动 (保底策略) ---
+        // 即使 MQTT 偶尔断连，这个函数也会保证屏幕不冷场
+        function simulateRemoteWishes() {
+            const randomWishes = [
+                "新年快乐！", "恭喜发财", "马到成功", "身体健康", 
+                "万事如意", "财源滚滚", "心想事成", "好运连连",
+                "龙马精神", "步步高升", "平安喜乐", "大吉大利"
+            ];
             
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        
-        let db = null;
-        let auth = null;
-        let messagesCollection = null;
-
-        try {
-            if (Object.keys(firebaseConfig).length > 0) {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                messagesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'wishes');
-                
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        try {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } catch (e) {
-                            console.error("Custom token auth failed", e);
-                            await signInAnonymously(auth);
-                        }
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                
-                initAuth().then(() => {
-                    console.log("Firebase Connected");
-                    subscribeToWishes();
-                }).catch(e => {
-                    console.log("Firebase Auth error:", e);
-                });
-            } else {
-                console.log("未检测到 Firebase 配置，运行在离线模式。");
-            }
-        } catch (e) {
-            console.log("Firebase 初始化错误，运行在离线模式。", e);
+            // 每隔 3-5 秒生成一条
+            const delay = Math.random() * 2000 + 3000;
+            setTimeout(() => {
+                const text = randomWishes[Math.floor(Math.random() * randomWishes.length)];
+                // 仅当屏幕弹幕较少时才补充
+                if (danmakus.length < 15) {
+                    danmakus.push(new Danmaku(text, false));
+                }
+                simulateRemoteWishes();
+            }, delay);
         }
+        simulateRemoteWishes();
 
-        function subscribeToWishes() {
-            if (!db || !auth.currentUser) return;
-            onSnapshot(messagesCollection, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === "added") {
-                        const data = change.doc.data();
-                        if (data.userId !== auth.currentUser.uid) {
-                            danmakus.push(new Danmaku(data.text, true));
-                            if (!change.doc.metadata.hasPendingWrites) {
-                                createFirework(Math.random() * fCanvas.width, Math.random() * fCanvas.height * 0.5);
-                            }
-                        }
-                    }
-                });
-            }, (error) => {});
-        }
-
-        window.sendWish = async function() {
+        // --- 发送祝福 (MQTT 版) ---
+        window.sendWish = function() {
             const input = document.getElementById('wish-input');
             const text = input.value.trim();
             if (!text) return;
-            danmakus.push(new Danmaku(text, true));
+            
+            // 1. 本地立即高亮显示 (无需等待网络)
+            danmakus.push(new Danmaku(text, true)); // true = 高亮
             createFirework(window.innerWidth / 2, window.innerHeight / 2);
             input.value = '';
             window.toggleModal(false);
-            if (db && auth && auth.currentUser) {
-                try {
-                    await addDoc(messagesCollection, {
-                        text: text,
-                        userId: auth.currentUser.uid,
-                        timestamp: Date.now()
-                    });
-                } catch (e) { console.error("发送失败:", e); }
+            showFloatingText(window.innerWidth/2, window.innerHeight/2, "祝福发送成功 ✨");
+
+            // 2. 通过 MQTT 广播给所有人
+            if (mqttClient.connected) {
+                const payload = JSON.stringify({
+                    text: text,
+                    id: mqttClient.options.clientId // 加上 ID 以便自己过滤
+                });
+                mqttClient.publish(mqttTopic, payload);
             }
         };
 
+        // --- 音乐控制逻辑 ---
         const bgm = document.getElementById('bgm');
         const musicBtn = document.getElementById('music-control');
         const musicUpload = document.getElementById('music-upload');
@@ -616,6 +595,7 @@
         document.body.addEventListener('click', tryPlayMusic, { once: true });
         document.body.addEventListener('touchstart', tryPlayMusic, { once: true });
         
+        // --- 核心动画逻辑 (Canvas) ---
         const fCanvas = document.getElementById('fireworks-canvas');
         const fCtx = fCanvas.getContext('2d');
         const rCanvas = document.getElementById('rain-canvas');
@@ -634,19 +614,16 @@
         window.addEventListener('resize', resize);
         resize();
 
-        const defaultWishes = [
-            "新年快乐", "恭喜发财", "马到成功", "身体健康", "万事如意", "财源滚滚", 
-            "心想事成", "合家欢乐", "龙马精神", "事业有成", "吉祥如意", "福气满满"
-        ];
-
         class Danmaku {
             constructor(text, isUser = false) {
                 this.text = text;
                 this.x = rCanvas.width;
-                this.y = Math.random() * (rCanvas.height * 0.8) + (rCanvas.height * 0.1); 
+                // 弹幕随机分布在上半屏
+                this.y = Math.random() * (rCanvas.height * 0.7) + (rCanvas.height * 0.1); 
                 this.speed = Math.random() * 2 + 1.5;
+                // 用户发的显示为金色高亮，别人的为半透明金
                 this.color = isUser ? "#FFF700" : `rgba(255, 215, 0, ${Math.random() * 0.4 + 0.4})`;
-                this.fontSize = isUser ? "bold 34px" : `${Math.floor(Math.random() * 10 + 18)}px`;
+                this.fontSize = isUser ? "bold 34px" : `${Math.floor(Math.random() * 10 + 20)}px`;
                 this.shadowBlur = isUser ? 20 : 0;
             }
             update() { this.x -= this.speed; }
@@ -660,17 +637,13 @@
             }
         }
 
+        // 初始化一些背景弹幕
+        const initialWishes = ["新年快乐", "恭喜发财", "马到成功", "身体健康", "万事如意"];
         for(let i=0; i<30; i++) {
-            const d = new Danmaku(defaultWishes[Math.floor(Math.random() * defaultWishes.length)]);
+            const d = new Danmaku(initialWishes[Math.floor(Math.random() * initialWishes.length)]);
             d.x = Math.random() * rCanvas.width;
             danmakus.push(d);
         }
-        
-        setInterval(() => {
-            if (danmakus.length < 20) {
-                danmakus.push(new Danmaku(defaultWishes[Math.floor(Math.random() * defaultWishes.length)]));
-            }
-        }, 1000);
 
         class Particle {
             constructor(x, y, hue) {
