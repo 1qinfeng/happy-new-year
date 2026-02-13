@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 马年新春盛典 - 鸿运当头</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    
+    <style>
+        /* --- 全局与背景 --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a0505;
+            background-image: 
+                radial-gradient(circle at 50% 40%, #4a0000 0%, #000000 90%),
+                url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23FFD700' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            font-family: 'Ma Shan Zheng', cursive;
+            color: #FFD700;
+            user-select: none;
+        }
+
+        #fireworks-canvas { position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; }
+        #rain-canvas { position: absolute; top: 0; left: 0; z-index: 2; pointer-events: auto; }
+        
+        #ui-layer {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            pointer-events: none; 
+        }
+        
+        .interactive { pointer-events: auto; cursor: pointer; }
+
+        /* --- 音乐控制按钮 --- */
+        #music-control {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 50;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid #FFD700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #FFD700;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+        }
+        #music-control:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: -25px;
+            font-size: 12px;
+            width: 80px;
+            text-align: center;
+            color: #FFD700;
+            text-shadow: 0 0 5px #000;
+            white-space: nowrap;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #music-control.playing {
+            animation: spin 4s linear infinite;
+            background: rgba(139, 0, 0, 0.6);
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.6);
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* --- 弹幕与祝福输入 UI --- */
+        #wish-btn {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 50;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #d32f2f, #b71c1c);
+            border: 2px solid #FFD700;
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #FFD700;
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            animation: bounce-slow 2s infinite;
+        }
+        #wish-btn:hover {
+            transform: scale(1.1) rotate(10deg);
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.6);
+        }
+
+        #wish-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 60;
+            display: none; 
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: linear-gradient(to bottom, #800000, #4a0000);
+            border: 2px solid #FFD700;
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 420px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.5);
+            position: relative;
+            transform: scale(0.8);
+            opacity: 0;
+            transition: all 0.3s ease-out;
+        }
+
+        #wish-modal.active { display: flex; }
+        #wish-modal.active .modal-content { transform: scale(1); opacity: 1; }
+
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border: 1px solid #FFD700;
+            background: rgba(255, 255, 255, 0.1);
+            color: #FFD700;
+            font-family: 'Ma Shan Zheng', cursive;
+            font-size: 1.2rem;
+            outline: none;
+            text-align: center;
+        }
+        .modal-input::placeholder { color: rgba(255, 215, 0, 0.5); }
+
+        /* --- AI 按钮样式 --- */
+        .ai-tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .ai-tag {
+            background: rgba(255, 215, 0, 0.15);
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            color: #FFD700;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .ai-tag:hover {
+            background: rgba(255, 215, 0, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+        }
+        .ai-tag.loading {
+            opacity: 0.7;
+            cursor: wait;
+        }
+        .ai-tag.loading i {
+            animation: spin 1s infinite linear;
+        }
+
+        /* --- 灯笼样式 --- */
+        .lantern-box {
+            position: absolute;
+            top: -10px;
+            z-index: 20;
+            transform-origin: 50% -20px;
+            animation: swing-gentle 4s infinite ease-in-out alternate;
+        }
+        
+        .lantern-wire { width: 4px; height: 60px; background: #b8860b; margin: 0 auto; }
+
+        .lantern-body {
+            width: 140px; height: 110px;
+            background: radial-gradient(circle at 70% 30%, #ff4d4d, #a30000);
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 15px 50px rgba(255, 0, 0, 0.5);
+            border: 1px solid #800000;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 2;
+        }
+        .lantern-body::before {
+            content: ''; position: absolute; top: 0; left: 25%; width: 50%; height: 100%;
+            border-radius: 50%;
+            border-left: 2px solid rgba(255, 215, 0, 0.3);
+            border-right: 2px solid rgba(255, 215, 0, 0.3);
+            pointer-events: none;
+        }
+        .lantern-body::after {
+            content: ''; position: absolute; top: 0; left: 42%; width: 16%; height: 100%;
+            border-radius: 50%;
+            border-left: 1px solid rgba(255, 215, 0, 0.2);
+            border-right: 1px solid rgba(255, 215, 0, 0.2);
+            pointer-events: none;
+        }
+
+        .lantern-cap {
+            width: 70px; height: 12px;
+            background: linear-gradient(to right, #b8860b, #ffd700, #b8860b);
+            margin: 0 auto; border-radius: 4px; position: relative; z-index: 3;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .cap-top { top: 6px; } .cap-bottom { bottom: 6px; }
+
+        .lantern-tassel {
+            width: 6px; height: 80px; background: #e60000; margin: -5px auto 0;
+            position: relative; box-shadow: 0 5px 10px rgba(0,0,0,0.3);
+        }
+        .lantern-knot {
+            width: 16px; height: 16px; background: #b8860b; border-radius: 50%;
+            margin: 0 auto; position: relative; top: -5px; z-index: 4;
+        }
+
+        .lantern-text {
+            font-size: 42px; color: #FFD700; font-weight: bold;
+            text-shadow: 0 2px 4px rgba(139, 0, 0, 0.8); z-index: 5;
+        }
+
+        @keyframes swing-gentle { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+        @keyframes bounce-slow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+        /* --- 标题与UI --- */
+        .title-glow { text-shadow: 0 0 10px rgba(255, 215, 0, 0.3), 0 0 20px rgba(255, 0, 0, 0.4); }
+        
+        .btn-style {
+            background: rgba(139, 0, 0, 0.6); backdrop-filter: blur(4px);
+            border: 1px solid #FFD700; color: #FFD700; padding: 10px 30px;
+            border-radius: 50px; font-size: 1.1rem; transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
+        }
+        .btn-style:hover {
+            background: rgba(180, 0, 0, 0.8); box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .countdown-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(80, 0, 0, 0.5); border: 1px solid rgba(255, 215, 0, 0.4);
+            border-radius: 8px; padding: 15px; min-width: 80px; position: relative;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 音频配置 -->
+    <audio id="bgm" src="./bgm.mp3" loop preload="auto"></audio>
+    <input type="file" id="music-upload" accept="audio/*" style="display: none;">
+
+    <!-- 背景大“福”字 -->
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0 select-none">
+        <div class="font-['Ma_Shan_Zheng'] text-[40vw] text-[#FFD700] leading-none opacity-20" 
+             style="transform: rotate(180deg); filter: drop-shadow(0 0 30px rgba(255, 215, 0, 0.2)); text-shadow: 0 0 20px rgba(139, 0, 0, 0.5);">
+            福
+        </div>
+    </div>
+
+    <canvas id="fireworks-canvas"></canvas>
+    <canvas id="rain-canvas"></canvas>
+
+    <!-- 音乐控制按钮 -->
+    <div id="music-control" class="interactive" onclick="window.toggleMusic()" data-tooltip="音乐开关">
+        <i class="fas fa-play"></i>
+    </div>
+
+    <!-- 侧边许愿按钮 -->
+    <div id="wish-btn" class="interactive" onclick="window.toggleModal(true)">
+        <i class="fas fa-pen-nib"></i>
+    </div>
+
+    <!-- 许愿弹窗 -->
+    <div id="wish-modal" onclick="if(event.target === this) window.toggleModal(false)">
+        <div class="modal-content interactive">
+            <h3 class="text-2xl text-yellow-400 font-bold mb-1">✨ 写下新年祝福 ✨</h3>
+            <p class="text-red-200 text-sm mb-4">您的祝福将化作金色弹幕同步给所有人！</p>
+            
+            <input type="text" id="wish-input" class="modal-input interactive" placeholder="例如：岁岁平安，万事如意" maxlength="12" onkeydown="if(event.key==='Enter') window.sendWish()">
+            
+            <!-- AI 灵感区域 -->
+            <div class="text-yellow-500/60 text-xs mb-2 text-left w-full pl-2">✨ DeepSeek 灵感助手 (点击自动生成):</div>
+            <div class="ai-tags-container">
+                <div class="ai-tag interactive" onclick="window.generateWish('传统吉祥')">
+                    <i class="fas fa-dragon"></i> 传统吉祥
+                </div>
+                <div class="ai-tag interactive" onclick="window.generateWish('马年谐音梗')">
+                    <i class="fas fa-horse"></i> 马年谐音
+                </div>
+                <div class="ai-tag interactive" onclick="window.generateWish('事业学业')">
+                    <i class="fas fa-graduation-cap"></i> 步步高升
+                </div>
+                <div class="ai-tag interactive" onclick="window.generateWish('幽默搞怪')">
+                    <i class="fas fa-laugh-wink"></i> 幽默搞怪
+                </div>
+            </div>
+
+            <div class="flex gap-4 justify-center mt-4">
+                <button onclick="window.toggleModal(false)" class="px-6 py-2 rounded-full border border-yellow-600 text-yellow-600 hover:bg-yellow-900/30 transition interactive">取消</button>
+                <button onclick="window.sendWish()" class="px-6 py-2 rounded-full bg-yellow-500 text-red-900 font-bold hover:bg-yellow-400 transition interactive shadow-[0_0_10px_rgba(255,215,0,0.5)]">发送祝福</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 灯笼组 -->
+    <div class="lantern-box left-[2%] md:left-[5%] scale-50 md:scale-100 origin-top">
+        <div class="lantern-wire"></div> <div class="lantern-cap cap-top"></div>
+        <div class="lantern-body"><span class="lantern-text">马</span></div>
+        <div class="lantern-cap cap-bottom"></div> <div class="lantern-knot"></div> <div class="lantern-tassel"></div>
+    </div>
+    <div class="lantern-box left-[26%] md:left-[20%] scale-50 md:scale-100 origin-top" style="animation-delay: -1s;">
+        <div class="lantern-wire"></div> <div class="lantern-cap cap-top"></div>
+        <div class="lantern-body"><span class="lantern-text">年</span></div>
+        <div class="lantern-cap cap-bottom"></div> <div class="lantern-knot"></div> <div class="lantern-tassel"></div>
+    </div>
+    <div class="lantern-box right-[26%] md:right-[20%] scale-50 md:scale-100 origin-top" style="animation-delay: -2.5s;">
+        <div class="lantern-wire"></div> <div class="lantern-cap cap-top"></div>
+        <div class="lantern-body"><span class="lantern-text">大</span></div>
+        <div class="lantern-cap cap-bottom"></div> <div class="lantern-knot"></div> <div class="lantern-tassel"></div>
+    </div>
+    <div class="lantern-box right-[2%] md:right-[5%] scale-50 md:scale-100 origin-top" style="animation-delay: -3.5s;">
+        <div class="lantern-wire"></div> <div class="lantern-cap cap-top"></div>
+        <div class="lantern-body"><span class="lantern-text">吉</span></div>
+        <div class="lantern-cap cap-bottom"></div> <div class="lantern-knot"></div> <div class="lantern-tassel"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="mb-8 text-center">
+            <div class="text-xl md:text-2xl text-yellow-500/80 tracking-[0.5em] mb-4">农历丙午年</div>
+            <h1 class="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-[#FFD700] to-[#FF8C00] title-glow m-0">
+                新春大吉
+            </h1>
+            <div class="text-lg md:text-xl text-red-300 mt-4 tracking-widest font-serif opacity-80">
+                HAPPY CHINESE NEW YEAR 2026
+            </div>
+        </div>
+
+        <!-- 倒计时 -->
+        <div class="flex gap-4 md:gap-8 mb-12">
+            <div class="countdown-item">
+                <span id="d" class="text-3xl md:text-5xl font-bold text-white">00</span>
+                <span class="text-yellow-500/70 text-xs mt-1">天</span>
+            </div>
+            <div class="countdown-item">
+                <span id="h" class="text-3xl md:text-5xl font-bold text-white">00</span>
+                <span class="text-yellow-500/70 text-xs mt-1">时</span>
+            </div>
+            <div class="countdown-item">
+                <span id="m" class="text-3xl md:text-5xl font-bold text-white">00</span>
+                <span class="text-yellow-500/70 text-xs mt-1">分</span>
+            </div>
+            <div class="countdown-item">
+                <span id="s" class="text-3xl md:text-5xl font-bold text-red-400">00</span>
+                <span class="text-yellow-500/70 text-xs mt-1">秒</span>
+            </div>
+        </div>
+
+        <div class="flex gap-6">
+            <button onclick="window.triggerSalute()" class="interactive btn-style">
+                ✨ 燃放烟花
+            </button>
+        </div>
+        
+        <div id="score-board" class="mt-6 text-xl text-yellow-200/80 font-light transition-opacity">
+            已集福气: <span id="score" class="text-yellow-400 font-bold text-2xl mx-1">0</span> 
+        </div>
+        <div class="text-sm text-yellow-500/40 mt-2">点击飘落的红包收获好运</div>
+    </div>
+
+    <!-- Firebase SDK 配置 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- 全局变量定义 ---
+        const targetDate = new Date('February 17, 2026 00:00:00').getTime();
+        // **注意**：在前端代码中硬编码 API Key 是不安全的。在生产环境中，请通过后端代理调用。
+        const deepseekApiKey = "sk-ae653d972e284b29a68739f1f53aa2a5"; 
+
+        // --- DeepSeek API 调用 ---
+        window.generateWish = async function(category) {
+            const input = document.getElementById('wish-input');
+            const originalPlaceholder = input.placeholder;
+            
+            // UI 反馈：设置加载状态
+            input.value = "DeepSeek 正在创作...";
+            input.disabled = true;
+            
+            const systemPrompt = "You are a creative assistant helping write short Chinese New Year wishes (max 12 chars).";
+            const userPrompt = `Generate a very short Chinese New Year wish (max 12 Chinese characters) for the Year of the Horse 2026. 
+                            Category: ${category}. 
+                            Style: Festive, creative, concise. 
+                            Output ONLY the wish text, no quotes, no explanations.`;
+
+            try {
+                const response = await fetch('https://api.deepseek.com/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${deepseekApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-chat",
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: userPrompt }
+                        ],
+                        stream: false
+                    })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error?.message || 'DeepSeek API 请求失败');
+                }
+
+                const data = await response.json();
+                const aiText = data.choices?.[0]?.message?.content?.trim() || "马年大吉大利！";
+                
+                // 清除引用号等可能的杂质
+                const cleanText = aiText.replace(/['"《》]/g, '');
+                
+                input.value = cleanText;
+            } catch (error) {
+                console.error("DeepSeek API Error:", error);
+                // Fallback: 如果 API 失败，使用本地随机库
+                const fallbacks = ["马到成功", "龙马精神", "一马当先", "万马奔腾"];
+                input.value = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+                showFloatingText(window.innerWidth/2, window.innerHeight/2, "AI 休息中，已随机生成");
+            } finally {
+                input.disabled = false;
+                input.focus();
+            }
+        };
+
+        // --- Firebase 配置 ---
+        const firebaseUserConfig = {
+            apiKey: "AIzaSyB7RuwDHdXsn4szGRvz02bOAGTdvmCr7jY",
+            authDomain:"my-lunar-new-year.firebaseapp.com",
+            projectId: "my-lunar-new-year",
+            storageBucket: "my-lunar-new-year.firebasestorage.app",
+            messagingSenderId: "683264389365",
+            appId: "1:683264389365:web:0d436de2928c8833dd55bc",
+            measurementId: "G-G1GQRW9K9R"
+        };
+
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
+            ? JSON.parse(__firebase_config) 
+            : firebaseUserConfig;
+            
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        let db = null;
+        let auth = null;
+        let messagesCollection = null;
+
+        try {
+            if (Object.keys(firebaseConfig).length > 0) {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                messagesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'wishes');
+                
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        try {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } catch (e) {
+                            console.error("Custom token auth failed", e);
+                            await signInAnonymously(auth);
+                        }
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                
+                initAuth().then(() => {
+                    console.log("Firebase Connected");
+                    subscribeToWishes();
+                }).catch(e => {
+                    console.log("Firebase Auth error:", e);
+                });
+            } else {
+                console.log("未检测到 Firebase 配置，运行在离线模式。");
+            }
+        } catch (e) {
+            console.log("Firebase 初始化错误，运行在离线模式。", e);
+        }
+
+        function subscribeToWishes() {
+            if (!db || !auth.currentUser) return;
+            onSnapshot(messagesCollection, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "added") {
+                        const data = change.doc.data();
+                        if (data.userId !== auth.currentUser.uid) {
+                            danmakus.push(new Danmaku(data.text, true));
+                            if (!change.doc.metadata.hasPendingWrites) {
+                                createFirework(Math.random() * fCanvas.width, Math.random() * fCanvas.height * 0.5);
+                            }
+                        }
+                    }
+                });
+            }, (error) => {});
+        }
+
+        window.sendWish = async function() {
+            const input = document.getElementById('wish-input');
+            const text = input.value.trim();
+            if (!text) return;
+            danmakus.push(new Danmaku(text, true));
+            createFirework(window.innerWidth / 2, window.innerHeight / 2);
+            input.value = '';
+            window.toggleModal(false);
+            if (db && auth && auth.currentUser) {
+                try {
+                    await addDoc(messagesCollection, {
+                        text: text,
+                        userId: auth.currentUser.uid,
+                        timestamp: Date.now()
+                    });
+                } catch (e) { console.error("发送失败:", e); }
+            }
+        };
+
+        const bgm = document.getElementById('bgm');
+        const musicBtn = document.getElementById('music-control');
+        const musicUpload = document.getElementById('music-upload');
+        let musicStarted = false;
+        let isManualMode = false;
+
+        function tryPlayMusic() {
+            if (musicStarted || isManualMode) return;
+            if (bgm.error) return;
+            const playPromise = bgm.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    musicBtn.classList.add('playing');
+                    musicBtn.innerHTML = '<i class="fas fa-compact-disc"></i>'; 
+                    showFloatingText(window.innerWidth/2, window.innerHeight/2, "音乐已开启 🎶");
+                    musicStarted = true;
+                }).catch(error => {});
+            }
+        }
+
+        window.toggleMusic = function() {
+            if (isManualMode) { musicUpload.click(); return; }
+            if (bgm.paused) {
+                bgm.play().then(() => {
+                    musicBtn.classList.add('playing');
+                    musicBtn.innerHTML = '<i class="fas fa-compact-disc"></i>'; 
+                    showFloatingText(window.innerWidth/2, window.innerHeight/2, "播放 ▶️");
+                    musicStarted = true;
+                }).catch(e => {
+                    showFloatingText(window.innerWidth/2, window.innerHeight/2, "请先点击页面任意处 👇");
+                });
+            } else {
+                bgm.pause();
+                musicBtn.classList.remove('playing');
+                musicBtn.innerHTML = '<i class="fas fa-play"></i>';
+                showFloatingText(window.innerWidth/2, window.innerHeight/2, "暂停 ⏸️");
+            }
+        };
+
+        bgm.onerror = function() {
+            console.log("背景音乐加载失败，切换为手动模式");
+            isManualMode = true;
+            musicBtn.innerHTML = '<i class="fas fa-folder-open"></i>';
+            musicBtn.setAttribute('data-tooltip', '选择文件');
+            showFloatingText(window.innerWidth/2, window.innerHeight/2, "无法加载音乐，请选择 📂");
+        };
+
+        musicUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            musicUpload.value = '';
+            if (!file) return;
+            if (bgm.src && bgm.src.startsWith('blob:')) URL.revokeObjectURL(bgm.src);
+            const fileURL = URL.createObjectURL(file);
+            bgm.src = fileURL;
+            isManualMode = false;
+            musicBtn.setAttribute('data-tooltip', '音乐开关');
+            bgm.play().then(() => {
+                musicBtn.classList.add('playing');
+                musicBtn.innerHTML = '<i class="fas fa-compact-disc"></i>';
+                showFloatingText(window.innerWidth/2, window.innerHeight/2, "开始播放 🎶");
+                musicStarted = true;
+            }).catch(err => {
+                musicBtn.classList.remove('playing');
+                musicBtn.innerHTML = '<i class="fas fa-play"></i>';
+                showFloatingText(window.innerWidth/2, window.innerHeight/2, "请点击图标播放 ▶️");
+            });
+        });
+
+        document.body.addEventListener('click', tryPlayMusic, { once: true });
+        document.body.addEventListener('touchstart', tryPlayMusic, { once: true });
+        
+        const fCanvas = document.getElementById('fireworks-canvas');
+        const fCtx = fCanvas.getContext('2d');
+        const rCanvas = document.getElementById('rain-canvas');
+        const rCtx = rCanvas.getContext('2d');
+        let particles = [];
+        let drops = []; 
+        let score = 0;
+        let danmakus = [];
+
+        function resize() {
+            fCanvas.width = window.innerWidth;
+            fCanvas.height = window.innerHeight;
+            rCanvas.width = window.innerWidth;
+            rCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const defaultWishes = [
+            "新年快乐", "恭喜发财", "马到成功", "身体健康", "万事如意", "财源滚滚", 
+            "心想事成", "合家欢乐", "龙马精神", "事业有成", "吉祥如意", "福气满满"
+        ];
+
+        class Danmaku {
+            constructor(text, isUser = false) {
+                this.text = text;
+                this.x = rCanvas.width;
+                this.y = Math.random() * (rCanvas.height * 0.8) + (rCanvas.height * 0.1); 
+                this.speed = Math.random() * 2 + 1.5;
+                this.color = isUser ? "#FFF700" : `rgba(255, 215, 0, ${Math.random() * 0.4 + 0.4})`;
+                this.fontSize = isUser ? "bold 34px" : `${Math.floor(Math.random() * 10 + 18)}px`;
+                this.shadowBlur = isUser ? 20 : 0;
+            }
+            update() { this.x -= this.speed; }
+            draw() {
+                rCtx.font = `${this.fontSize} 'Ma Shan Zheng'`;
+                rCtx.fillStyle = this.color;
+                rCtx.shadowColor = "#FF0000";
+                rCtx.shadowBlur = this.shadowBlur;
+                rCtx.fillText(this.text, this.x, this.y);
+                rCtx.shadowBlur = 0;
+            }
+        }
+
+        for(let i=0; i<30; i++) {
+            const d = new Danmaku(defaultWishes[Math.floor(Math.random() * defaultWishes.length)]);
+            d.x = Math.random() * rCanvas.width;
+            danmakus.push(d);
+        }
+        
+        setInterval(() => {
+            if (danmakus.length < 20) {
+                danmakus.push(new Danmaku(defaultWishes[Math.floor(Math.random() * defaultWishes.length)]));
+            }
+        }, 1000);
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x; this.y = y; this.hue = hue;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4 + 2;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.friction = 0.96; this.gravity = 0.08;
+                this.alpha = 1; this.decay = Math.random() * 0.015 + 0.005;
+            }
+            update() {
+                this.vx *= this.friction; this.vy *= this.friction;
+                this.vy += this.gravity;
+                this.x += this.vx; this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                fCtx.globalAlpha = this.alpha;
+                fCtx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                fCtx.beginPath(); fCtx.arc(this.x, this.y, 2.5, 0, Math.PI * 2); fCtx.fill();
+            }
+        }
+
+        function createFirework(x, y) {
+            const hue = Math.floor(Math.random() * 60) + 330;
+            for (let i = 0; i < 60; i++) { particles.push(new Particle(x, y, hue)); }
+        }
+        window.createFirework = createFirework;
+
+        function animateFireworks() {
+            fCtx.globalCompositeOperation = 'destination-out';
+            fCtx.fillStyle = 'rgba(0, 0, 0, 0.2)'; 
+            fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
+            fCtx.globalCompositeOperation = 'source-over'; 
+            particles.forEach((p, i) => {
+                p.update(); p.draw();
+                if (p.alpha <= 0) particles.splice(i, 1);
+            });
+            requestAnimationFrame(animateFireworks);
+        }
+        animateFireworks();
+
+        class Drop {
+            constructor(type) {
+                this.type = type; 
+                this.x = Math.random() * rCanvas.width;
+                this.y = -60;
+                const scale = type === 'hongbao' ? (Math.random() * 0.6 + 0.7) : (Math.random() * 0.5 + 0.8);
+                this.w = (type === 'hongbao' ? 36 : 10) * scale;
+                this.h = (type === 'hongbao' ? 50 : 10) * scale;
+                this.vy = type === 'hongbao' ? Math.random() * 1.5 + 1 : Math.random() * 1 + 0.5;
+                this.vx = Math.random() * 1 - 0.5;
+                this.rot = Math.random() * 360;
+                this.rotSpeed = Math.random() * 1 - 0.5;
+                this.radius = Math.max(this.w, this.h) / 2;
+            }
+            update() {
+                this.y += this.vy;
+                this.x += this.vx + Math.sin(this.y / 50) * 0.5;
+                this.rot += this.rotSpeed;
+                return (this.y < rCanvas.height + 60);
+            }
+            draw() {
+                rCtx.save();
+                rCtx.translate(this.x, this.y);
+                rCtx.rotate(this.rot * Math.PI / 180);
+                if (this.type === 'hongbao') {
+                    rCtx.fillStyle = '#c62828';
+                    rCtx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
+                    rCtx.strokeStyle = '#e53935';
+                    rCtx.beginPath(); rCtx.moveTo(-this.w/2, -this.h/4);
+                    rCtx.quadraticCurveTo(0, 0, this.w/2, -this.h/4); rCtx.stroke();
+                    rCtx.fillStyle = '#FFD700';
+                    rCtx.beginPath(); rCtx.arc(0, this.h * 0.1, this.w * 0.16, 0, Math.PI*2); rCtx.fill();
+                    rCtx.fillStyle = '#c62828';
+                    const fontSize = Math.floor(this.w * 0.22);
+                    rCtx.font = `${fontSize}px Arial`; rCtx.textAlign = "center";
+                    rCtx.textBaseline = "middle"; rCtx.fillText("福", 0, this.h * 0.1);
+                } else {
+                    rCtx.fillStyle = `rgba(255, 215, 0, ${Math.random() * 0.5 + 0.5})`;
+                    rCtx.beginPath(); rCtx.arc(0, 0, this.w/2, 0, Math.PI*2); rCtx.fill();
+                }
+                rCtx.restore();
+            }
+        }
+
+        for(let i=0; i<20; i++) drops.push(new Drop('flower'));
+
+        function animateRainAndDanmaku() {
+            rCtx.clearRect(0, 0, rCanvas.width, rCanvas.height);
+            if (Math.random() < 0.008) drops.push(new Drop('hongbao'));
+            if (drops.filter(d => d.type === 'flower').length < 25 && Math.random() < 0.05) drops.push(new Drop('flower'));
+
+            drops = drops.filter(d => {
+                const alive = d.update();
+                d.draw();
+                return alive;
+            });
+            danmakus = danmakus.filter(d => {
+                d.update();
+                d.draw();
+                return d.x + 500 > 0;
+            });
+            requestAnimationFrame(animateRainAndDanmaku);
+        }
+        animateRainAndDanmaku();
+
+        window.triggerSalute = function() {
+            for(let i=0; i<5; i++) {
+                setTimeout(() => {
+                    createFirework(Math.random()*fCanvas.width, Math.random()*fCanvas.height*0.6);
+                }, i*300);
+            }
+        };
+
+        window.toggleModal = function(show) {
+            const modal = document.getElementById('wish-modal');
+            if (show) {
+                modal.classList.add('active');
+                setTimeout(() => document.getElementById('wish-input').focus(), 100);
+            } else {
+                modal.classList.remove('active');
+            }
+        };
+
+        function showFloatingText(x, y, text) {
+            const el = document.createElement('div');
+            el.style.position = 'absolute'; el.style.left = x + 'px'; el.style.top = y + 'px';
+            el.style.color = '#FFD700'; el.style.fontWeight = 'bold'; el.style.fontSize = '24px';
+            el.style.pointerEvents = 'none'; el.style.zIndex = '100';
+            el.style.textShadow = '0 2px 5px rgba(0,0,0,0.5)';
+            el.style.animation = 'floatUp 1s ease-out forwards';
+            el.innerText = text;
+            const style = document.createElement('style');
+            style.innerHTML = `@keyframes floatUp { 0% { opacity:1; transform:translateY(0); } 100% { opacity:0; transform:translateY(-50px); } }`;
+            document.head.appendChild(style);
+            document.body.appendChild(el);
+            setTimeout(() => { el.remove(); style.remove(); }, 1000);
+        }
+
+        function checkClick(x, y) {
+            let hit = false;
+            // 音乐按钮区域
+            const mRect = musicBtn.getBoundingClientRect();
+            if (x >= mRect.left && x <= mRect.right && y >= mRect.top && y <= mRect.bottom) return;
+            // 许愿按钮区域
+            const wRect = document.getElementById('wish-btn').getBoundingClientRect();
+            if (x >= wRect.left && x <= wRect.right && y >= wRect.top && y <= wRect.bottom) return;
+            
+            if (document.getElementById('wish-modal').classList.contains('active')) return;
+
+            for (let i = drops.length - 1; i >= 0; i--) {
+                const d = drops[i];
+                if (d.type === 'hongbao') {
+                    const dx = x - d.x; const dy = y - d.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < d.radius + 10) {
+                        drops.splice(i, 1); hit = true;
+                        const amount = [66, 88, 168, 666, 888][Math.floor(Math.random()*5)];
+                        score += amount;
+                        document.getElementById('score').innerText = score;
+                        showFloatingText(x, y, `+${amount}`);
+                        createFirework(x, y);
+                        break;
+                    }
+                }
+            }
+            if (!hit) createFirework(x, y);
+        }
+
+        document.addEventListener('mousedown', e => checkClick(e.clientX, e.clientY));
+        document.addEventListener('touchstart', e => {
+            for (let i = 0; i < e.touches.length; i++) {
+                checkClick(e.touches[i].clientX, e.touches[i].clientY);
+            }
+        }, {passive: false});
+        
+        setInterval(() => {
+            if (Math.random() < 0.2) createFirework(Math.random()*fCanvas.width, Math.random()*fCanvas.height*0.5);
+        }, 2000);
+
+        // --- 倒计时逻辑 ---
+        const dEl = document.getElementById('d');
+        const hEl = document.getElementById('h');
+        const mEl = document.getElementById('m');
+        const sEl = document.getElementById('s');
+        function updateT() {
+            const now = new Date().getTime();
+            let distance = targetDate - now;
+            if (distance < 0) distance += 31536000000;
+            dEl.innerText = Math.floor(distance / (1000 * 60 * 60 * 24)).toString().padStart(2,'0');
+            hEl.innerText = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)).toString().padStart(2,'0');
+            mEl.innerText = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2,'0');
+            sEl.innerText = Math.floor((distance % (1000 * 60)) / 1000).toString().padStart(2,'0');
+        }
+        setInterval(updateT, 1000);
+        updateT();
+    </script>
+</body>
+</html>
